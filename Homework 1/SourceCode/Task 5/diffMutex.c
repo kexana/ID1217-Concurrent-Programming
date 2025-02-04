@@ -10,7 +10,8 @@
 
 int counter = 0; // counters
 pthread_cond_t go;		 /* condition variable for leaving */
-pthread_mutex_t pcLock; /* mutex lock for the barrier */
+pthread_mutex_t pLock; /* mutex lock for the producer */
+pthread_mutex_t cLock; /* mutex lock for the consumer */
  
 /* timer */
 double read_timer()
@@ -98,37 +99,39 @@ void *Producer(void *arg)
 	char line2temp[100];
 	while (true)
     {
-		char *statusf1 = fgets(line1temp, 100, ((struct Arguments *)arg)->file1);
-		char *statusf2 = fgets(line2temp, 100, ((struct Arguments *)arg)->file2);
+        if(counter < 1){
+            char *statusf1 = fgets(line1temp, 100, ((struct Arguments *)arg)->file1);
+            char *statusf2 = fgets(line2temp, 100, ((struct Arguments *)arg)->file2);
 
-        if (!statusf1 && !statusf2)
-        {
-			filesEnd = 1;
-			break;
-		}
-		else
-        {
-			pthread_mutex_lock(&pcLock);
-			while (counter != 0)
-			{
-				pthread_cond_wait(&go, &pcLock);
-			}
-			
-			strcpy(((struct Arguments *)arg)->linef1, line1temp);
-			strcpy(((struct Arguments *)arg)->linef2, line2temp);
-
-			if (!statusf1)
-			{
-                memset((((struct Arguments *)arg)->linef1), 0, strlen((((struct Arguments *)arg)->linef1)));
-            }
-            else if (!statusf2)
+            if (!statusf1 && !statusf2)
             {
-                memset((((struct Arguments *)arg)->linef2), 0, strlen((((struct Arguments *)arg)->linef2)));
+                filesEnd = 1;
+                break;
             }
-			counter++;
-			pthread_cond_broadcast(&go);
-			pthread_mutex_unlock(&pcLock);
-		}
+            else
+            {
+                pthread_mutex_lock(&pLock);
+                while (counter > 0)
+                {
+                    pthread_cond_wait(&go, &pLock);
+                }
+                
+                strcpy(((struct Arguments *)arg)->linef1, line1temp);
+                strcpy(((struct Arguments *)arg)->linef2, line2temp);
+
+                if (!statusf1)
+                {
+                    memset((((struct Arguments *)arg)->linef1), 0, strlen((((struct Arguments *)arg)->linef1)));
+                }
+                else if (!statusf2)
+                {
+                    memset((((struct Arguments *)arg)->linef2), 0, strlen((((struct Arguments *)arg)->linef2)));
+                }
+                counter++;
+                pthread_cond_broadcast(&go);
+                pthread_mutex_unlock(&pLock);
+            }
+        }
 	}
 }
 
@@ -140,24 +143,26 @@ void *Consumer(void *arg)
         {
 			break;
 		}
-		pthread_mutex_lock(&pcLock);
-		while (counter <= 0)
-		{
-			pthread_cond_wait(&go, &pcLock);
-		}
-		if (strcmp(((struct Arguments *)arg)->linef1, ((struct Arguments *)arg)->linef2) != 0)
-        {
-            char path1[100];
-            char path2[100];
-            strcpy(path1, ((struct Arguments *)arg)->linef1);
-            strcpy(path2, ((struct Arguments *)arg)->linef2);
-            path1[strcspn(path1, "\n")] = 0;
-            path2[strcspn(path2, "\n")] = 0;
-            printf("f1: %s -> f2: %s\n", path1, path2);
+        if(counter>0){
+            counter--;
+            pthread_cond_broadcast(&go);
+            pthread_mutex_lock(&cLock);
+            while (counter < 0)
+            {
+                pthread_cond_wait(&go, &cLock);
+            }
+            if (strcmp(((struct Arguments *)arg)->linef1, ((struct Arguments *)arg)->linef2) != 0)
+            {
+                char path1[100];
+                char path2[100];
+                strcpy(path1, ((struct Arguments *)arg)->linef1);
+                strcpy(path2, ((struct Arguments *)arg)->linef2);
+                path1[strcspn(path1, "\n")] = 0;
+                path2[strcspn(path2, "\n")] = 0;
+                printf("f1: %s -> f2: %s\n", path1, path2);
+            }
+            pthread_mutex_unlock(&cLock);
         }
-		counter--;
-		pthread_cond_broadcast(&go);
-		pthread_mutex_unlock(&pcLock);
     }
 }
  

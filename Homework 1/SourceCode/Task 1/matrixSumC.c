@@ -18,6 +18,7 @@
 #include <stdbool.h>
 #include <time.h>
 #include <sys/time.h>
+#include <sys/queue.h>
 #define MAXSIZE 10000 /* maximum matrix size */
 #define MAXWORKERS 10 /* maximum number of workers */
 
@@ -28,7 +29,8 @@ pthread_mutex_t sumLock; /* mutex lock for the sum */
 pthread_mutex_t counterLock; /* mutex lock for the counter */
 pthread_cond_t go;		 /* condition variable for leaving */
 int numWorkers;			 /* number of workers */
-int numArrived = 0;		 /* number who have arrived */
+int numTasks;
+int numArrived = 0; /* number who have arrived */
 
 /* a reusable counter barrier */
 void Barrier()
@@ -85,9 +87,16 @@ struct Arguments
 	struct Max* max;
 	long id;
     int* matrixTotal;
+	struct Task* tasks;
 };
 
-void *Worker(void *arg);
+struct Task{
+	int first;
+	int last;
+};
+
+void *
+Worker(void *arg);
 
 /* read command line, initialize, and create threads */
 int main(int argc, char *argv[])
@@ -104,8 +113,6 @@ int main(int argc, char *argv[])
 
     int total = 0;
 
-	int rowCounter = 0;
-
 	/* set global thread attributes */
 	pthread_attr_init(&attr);
 	pthread_attr_setscope(&attr, PTHREAD_SCOPE_SYSTEM);
@@ -121,7 +128,8 @@ int main(int argc, char *argv[])
 		size = MAXSIZE;
 	if (numWorkers > MAXWORKERS)
 		numWorkers = MAXWORKERS;
-	stripSize = size / numWorkers;
+	numTasks = numWorkers * 2;
+	stripSize = size / (numTasks);
 
 	/* initialize the matrix */
 	srand(time(NULL));
@@ -145,28 +153,27 @@ int main(int argc, char *argv[])
 	}
 
 	/* do the parallel work: create the workers */
-	struct Arguments pArg;
-	pArg.min = &min;
-	pArg.max = &max;
-	pArg.matrixTotal = &total;
+	struct Arguments pArg [numWorkers];
 
-    start_time = read_timer();
-    while (true)
+	struct Task tasks[numTasks];
+
+	//generate tasks
+	for (i = 0; i < numTasks;i++){
+		tasks[i].first = i*stripSize;
+		tasks[i].last = (i == numTasks - 1) ? (size - 1) : (tasks[i].first + stripSize - 1);
+	}
+
+		start_time = read_timer();
+    for (l = 0; l < numWorkers; l++)
 	{
-		pthread_mutex_lock(&counterLock);
-			pArg.id = rowCounter;
-			rowCounter++;
-		pthread_mutex_unlock(&counterLock);
-
-		if (rowCounter >= numWorkers)
-		{
-			break;
-		}
-
-		pthread_create(&workerid[pArg.id], &attr, Worker, (void*) &pArg);
+        pArg[l].min = &min;
+        pArg[l].max = &max;
+        pArg[l].id = l;
+		pArg[l].matrixTotal = &total;
+		pArg[l].tasks = &(tasks[0]);
+		pthread_create(&workerid[l], &attr, Worker, (void*) &pArg[l]);
     }
-	for (l = 0; l < numWorkers; l++)
-	{
+	for (l = 0; l < numWorkers; l++){
 		//wait for threads to terminate before continuing 
         pthread_join(workerid[l],NULL);
 	}
@@ -181,6 +188,9 @@ int main(int argc, char *argv[])
     printf("The execution time is %g sec\n", end_time - start_time);
 }
 
+short done=0;
+int rowCounter = 0;
+
 /* Each worker sums the values in one strip of the matrix.
    After a barrier, worker(0) computes and prints the total */
 void *Worker(void *arg)
@@ -190,42 +200,53 @@ void *Worker(void *arg)
 	struct Max* maxPoint = ((struct Arguments*)arg)->max;
 	struct Min* minPoint = ((struct Arguments*)arg)->min;
     int* totalPoint = ((struct Arguments *)arg)->matrixTotal;
+	struct Task* tasks =  ((struct Arguments*)arg)->tasks;
 
 	//printf("worker %d (pthread id %d) has started\n", (int) myid, (int) pthread_self());
 
-	/* determine first and last rows of my strip */
-	first = myid * stripSize;
-	last = (myid == numWorkers - 1) ? (size - 1) : (first + stripSize - 1);
 
-	for (i = first; i <= last; i++)
-	{
-		for (j = 0; j < size; j++)
+	while(!done){
+
+		//get a task
+		pthread_mutex_lock(&counterLock);
+		first = tasks->first;
+		last = tasks->last;
+		tasks +=1;
+		rowCounter+=1;
+		if(rowCounter >= numTasks){
+			done = 1;
+		}
+		pthread_mutex_unlock(&counterLock);
+				
+		for (i = first; i <= last; i++)
 		{
-            pthread_mutex_lock(&sumLock);
-			    *totalPoint += matrix[i][j];
-            pthread_mutex_unlock(&sumLock);
+			for (j = 0; j < size; j++)
+			{
+				pthread_mutex_lock(&sumLock);
+				*totalPoint += matrix[i][j];
+				pthread_mutex_unlock(&sumLock);
 
-			if(matrix[i][j]>(*maxPoint).value){
-				pthread_mutex_lock(&maxLock);
-					if(matrix[i][j]>(*maxPoint).value){
-                        (*maxPoint).value = matrix[i][j];
-                        (*maxPoint).xCoordinate = i;
-						(*maxPoint).yCoordinate = j;
-					}
-				pthread_mutex_unlock(&maxLock);
-			}
-			if(matrix[i][j]<(*minPoint).value){
-				pthread_mutex_lock(&minLock);
-					if(matrix[i][j]<(*minPoint).value){
-						(*minPoint).value = matrix[i][j];
-						(*minPoint).xCoordinate = i;
-						(*minPoint).yCoordinate = j;
-					}
-				pthread_mutex_unlock(&minLock);
+				if(matrix[i][j]>(*maxPoint).value){
+					pthread_mutex_lock(&maxLock);
+						if(matrix[i][j]>(*maxPoint).value){
+							(*maxPoint).value = matrix[i][j];
+							(*maxPoint).xCoordinate = j;
+							(*maxPoint).yCoordinate = i;
+						}
+					pthread_mutex_unlock(&maxLock);
+				}
+				if(matrix[i][j]<(*minPoint).value){
+					pthread_mutex_lock(&minLock);
+						if(matrix[i][j]<(*minPoint).value){
+							(*minPoint).value = matrix[i][j];
+							(*minPoint).xCoordinate = j;
+							(*minPoint).yCoordinate = i;
+						}
+					pthread_mutex_unlock(&minLock);
+				}
 			}
 		}
 	}
-
     //maybe can pass total here and sum it in main instead of loking it in the thread?
     pthread_exit(NULL);
 	return 0;
