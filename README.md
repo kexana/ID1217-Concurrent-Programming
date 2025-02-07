@@ -10,3 +10,12 @@ This course covers the core concepts and techniques for concurrent (process-orie
 
 These assigments are written as part of group tasks by me and my teammate Kacper Lisik. 
 From the given choice between Java and C we decided to work on them with the latter.
+
+## Folder Structure
+
+Each homework assigment folder contains the following files by default, where:
+
+- `SourceCode`: the folder to maintain sources for the task
+- `Report.tex`: the assigment report in \Latex code
+- `Report.pdf`: the finished report as a pdf
+
