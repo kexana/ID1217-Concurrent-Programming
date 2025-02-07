@@ -16,6 +16,6 @@ From the given choice between Java and C we decided to work on them with the lat
 Each homework assigment folder contains the following files by default, where:
 
 - `SourceCode`: the folder to maintain sources for the task
-- `Report.tex`: the assigment report in \Latex code
+- `Report.tex`: the assigment report in \LaTeX code
 - `Report.pdf`: the finished report as a pdf
 
