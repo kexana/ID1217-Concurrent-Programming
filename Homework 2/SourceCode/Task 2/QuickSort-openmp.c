@@ -4,13 +4,13 @@
 #include <stdlib.h>
 #include <time.h>
 #define MAXSIZE 10000 /* maximum set length */
-#define MAXWORKERS 12  /* maximum number of workers */
+#define MAXWORKERS 12 /* maximum number of workers */
 
 int numWorkers;
 int size;
 
 double start_time, end_time, totalExectime;
-int iterations = 100;
+int iterations = 100; //test iterations
 
 // dynamic array implementation by @casablanca
 typedef struct
@@ -63,7 +63,7 @@ Array joinArrays(Array *a, Array *b)
 	{
 		insertArray(&tot, b->array[i]);
 	}
-	
+
 	return tot;
 }
 
@@ -85,59 +85,76 @@ Array quickSort(Array *mainSet)
 	initArray(&right, currSize / 2);
 
 	int pivotCount = 0;
-	#pragma omp parallel for shared(pivotCount)
 	for (k = 0; k < currSize; k++)
 	{
 		if (mainSet->array[k] < pivot)
 		{
-			#pragma omp critical
 			insertArray(&left, mainSet->array[k]);
 		}
 		else if (mainSet->array[k] > pivot)
 		{
-			#pragma omp critical
 			insertArray(&right, mainSet->array[k]);
-		}else{
-			#pragma omp critical
+		}
+		else
+		{
 			pivotCount++;
 		}
 	}
-	left = quickSort(&left);
-	right = quickSort(&right);
+
+	#pragma omp task shared(left)
+	{
+		left = quickSort(&left);
+	}
+
+	#pragma omp task shared(right)
+	{
+		right = quickSort(&right);
+	}
+	
+	#pragma omp taskwait
+
 	Array pivotAsArr;
 	initArray(&pivotAsArr, 1);
-	for (k = 0; k < pivotCount;k++){
+	for (k = 0; k < pivotCount; k++)
+	{
 		insertArray(&pivotAsArr, pivot);
 	}
-	
 
-	/*	printf("[");
-	for (k = 0; k < currSize; k++)
-	{
-		printf(" %d", mainSet->array[k]);
-	}
-	printf("]\n");
-	
-	printf("[");
-	for (k = 0; k < left.used; k++)
-	{
-		printf(" %d", left.array[k]);
-	}
-	printf("]  ");
-	
-	printf("pivot %d  ", pivot);
-	
-	printf("[");
-	for (k = 0; k < right.used; k++)
-	{
-		printf(" %d", right.array[k]);
-	}
-	printf("] \n");
-	printf("\n");
-	*/
+	//debug print
+	{/*
+		printf("[");
+		for (k = 0; k < currSize; k++)
+		{
+			printf(" %d", mainSet->array[k]);
+		}
+		printf("]\n");
 
+		printf("[");
+		for (k = 0; k < left.used; k++)
+		{
+			printf(" %d", left.array[k]);
+		}
+		printf("]  ");
+
+		printf("pivot %d  ", pivot);
+
+		printf("[");
+		for (k = 0; k < right.used; k++)
+		{
+			printf(" %d", right.array[k]);
+		}
+		printf("] \n");
+	*/}
 	left = joinArrays(&left, &pivotAsArr);
-	return joinArrays(&left, &right);
+	left = joinArrays(&left, &right);
+
+	// printf("joined: [");
+	// for (k = 0; k < left.used; k++)
+	// {
+	// 	printf(" %d", left.array[k]);
+	// }
+	// printf("]\n\n");
+	return left;
 }
 
 Array quickSortSeq(Array *mainSet)
@@ -167,49 +184,58 @@ Array quickSortSeq(Array *mainSet)
 		else if (mainSet->array[k] > pivot)
 		{
 			insertArray(&right, mainSet->array[k]);
-		}else{
+		}
+		else
+		{
 			pivotCount++;
 		}
 	}
-	left = quickSort(&left);
-	right = quickSort(&right);
+	left = quickSortSeq(&left);
+	right = quickSortSeq(&right);
 	Array pivotAsArr;
 	initArray(&pivotAsArr, 1);
-	for (k = 0; k < pivotCount;k++){
+	for (k = 0; k < pivotCount; k++)
+	{
 		insertArray(&pivotAsArr, pivot);
 	}
-	
 
-	/*	printf("[");
+	//debug print
+	/*printf("[");
 	for (k = 0; k < currSize; k++)
 	{
 		printf(" %d", mainSet->array[k]);
 	}
 	printf("]\n");
-	
+
 	printf("[");
 	for (k = 0; k < left.used; k++)
 	{
 		printf(" %d", left.array[k]);
 	}
 	printf("]  ");
-	
+
 	printf("pivot %d  ", pivot);
-	
+
 	printf("[");
 	for (k = 0; k < right.used; k++)
 	{
 		printf(" %d", right.array[k]);
 	}
-	printf("] \n");
-	printf("\n");
-	*/
+	printf("] \n");*/
 
 	left = joinArrays(&left, &pivotAsArr);
-	return joinArrays(&left, &right);
+	left = joinArrays(&left, &right);
+
+	// printf("joined: [");
+	// for (k = 0; k < left.used; k++)
+	// {
+	// 	printf(" %d", left.array[k]);
+	// }
+	// printf("]\n\n");
+
+	return left;
 }
 
-Array toSortSet;
 
 /* read command line, initialize, and create threads */
 int main(int argc, char *argv[])
@@ -223,70 +249,84 @@ int main(int argc, char *argv[])
 	if (numWorkers > MAXWORKERS)
 		numWorkers = MAXWORKERS;
 
-	//loop to get median execution time
-	int k;
+	// loop to get median execution time
+	int k,i;
 	int threads = 1;
 	double totalExectime = 0;
 	double sequentialEx;
 
-	//find the sequential execution of the problem
-
-	/* initialize a test set */
-	initArray(&toSortSet, size);
-	srand(time(NULL));
-	//printf("[");
-	for (k = 0; k < size; k++)
-	{
-		insertArray(&toSortSet, rand() % 10000);
-		//printf(" %d", toSortSet.array[i]);
-	}
-
+	// find the sequential execution of the problem
 	for (k = 0; k < iterations; k++)
 	{
+		Array toSortSet;
+		initArray(&toSortSet, size);
+
+		/* initialize a test set */
+		srand(time(NULL)*k);
+		// printf("[");
+		for (i = 0; i < size; i++)
+		{
+			insertArray(&toSortSet, rand() % 10000);
+			// printf(" %d", toSortSet.array[i]);
+		}
+		// printf("]\n");
+
 		start_time = omp_get_wtime();
 		Array sorted = quickSortSeq(&toSortSet);
 		end_time = omp_get_wtime();
-		totalExectime += end_time - start_time;
+		double currtime = end_time - start_time;
+		totalExectime += currtime;
+		freeArray(&toSortSet);
 	}
-	sequentialEx = totalExectime / iterations;
+	sequentialEx = totalExectime / (double) iterations;
 	printf("%g\n", sequentialEx);
-	totalExectime = 0;
 
-	//check perforamance for different amount of threads
-	for (threads = 1; threads <= 12;threads++){
+	// check perforamance for different amount of threads
+	for (threads = 1; threads <= numWorkers; threads++)
+	{
 		omp_set_num_threads(threads);
-
+		
+		totalExectime = 0;
 		for (k = 0; k < iterations; k++)
 		{
+			Array toSortSet;
 			initArray(&toSortSet, size);
-			int i, j, total = 0;
 
 			/* initialize the set */
-			srand(time(NULL));
-			//printf("[");
+			srand(time(NULL)*k);
+			//  printf("given: [");
 			for (i = 0; i < size; i++)
 			{
 				insertArray(&toSortSet, rand() % 10000);
-				//printf(" %d", toSortSet.array[i]);
+				//  printf(" %d", toSortSet.array[i]);
 			}
-			//printf("]\n");
+			// printf("]\n");
 
+			Array sorted;
 			start_time = omp_get_wtime();
-			Array sorted = quickSort(&toSortSet);
+			#pragma omp parallel
+			{
+				#pragma omp single
+				{
+					sorted = quickSort(&toSortSet);
+				}
+			}
 			end_time = omp_get_wtime();
-			totalExectime += end_time - start_time;
+			double currtime = end_time - start_time;
+			totalExectime += currtime;
+			freeArray(&toSortSet);
+			// final printout
+
+			// printf("[");
+			// for (i = 0; i < size; i++)
+			// {
+			// 	printf(" %d", sorted.array[i]);
+			// }
+			// printf("]\n");
 		}
-		//printf("\n %g \n",totalExectime/iterations);
-		printf("(%d, %g)",threads, sequentialEx/(totalExectime/iterations));
+		//printf("%g \n",totalExectime/(double)iterations);
+		printf("(%d, %g)", threads, sequentialEx / (totalExectime / (double) iterations));
 	}
 	printf("\n");
-	// final printout
-
-	// printf("[");
-	// for (i = 0; i < size; i++)
-	// {
-	// 	printf(" %d", sorted.array[i]);
-	// }
-	// printf("]\n");
 	
 }

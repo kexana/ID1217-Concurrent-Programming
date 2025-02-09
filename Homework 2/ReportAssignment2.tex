@@ -83,7 +83,7 @@ fontsize=\footnotesize,
 
 \subsection*{Performance exploration}
 
-Sequential time as a median from 100 executions: \[ 8.73899 * 10^{-8}s\]
+Example sequential time as a median from 100 executions for an 8x8 matrix: \[ 8.73899 * 10^{-8}s\]
 
 \begin{figure}[H]
     \centering
@@ -104,7 +104,8 @@ Sequential time as a median from 100 executions: \[ 8.73899 * 10^{-8}s\]
             mark=o,
             ]
             coordinates {
-            (1, 0.00722852)(2, 0.00526292)(3, 0.00440972)(4, 0.0039533)(5, 0.00360869)(6, 0.00328779)(7, 0.0029776)
+           (1, 0.0503607)(2, 0.0205732)(3, 0.0212526)(4, 0.0203416)(5, 0.0192045)(6, 0.0182709)(7, 0.0226081)(8, 0.0200073)(9, 0.0173001)(10, 0.0191062)(11, 0.0184819)(12, 0.000992439)
+
             };
             \addlegendentry{8x8}
 
@@ -113,7 +114,7 @@ Sequential time as a median from 100 executions: \[ 8.73899 * 10^{-8}s\]
             mark=o,
             ]
             coordinates {
-            (1, 0.00590448)(2, 0.00474545)(3, 0.00404135)(4, 0.00357436)(5, 0.00285155)(6, 0.00258929)(7, 0.00236971)
+            (1, 0.374876)(2, 0.197327)(3, 0.185149)(4, 0.176334)(5, 0.146219)(6, 0.217691)(7, 0.183862)(8, 0.308297)(9, 0.190484)(10, 0.120867)(11, 0.277114)(12, 0.174977)
             };
             \addlegendentry{32x32}
 
@@ -122,7 +123,7 @@ Sequential time as a median from 100 executions: \[ 8.73899 * 10^{-8}s\]
             mark=o,
             ]
             coordinates {
-            (1, 0.00423888)(2, 0.00312863)(3, 0.00240844)(4, 0.0020048)(5, 0.00170995)(6, 0.00151171)(7, 0.00133168)
+            (1, 0.482204)(2, 0.652608)(3, 0.680176)(4, 1.03481)(5, 1.09904)(6, 1.0229)(7, 1.10154)(8, 1.29014)(9, 1.30424)(10, 1.24907)(11, 1.20019)(12, 0.462933)
             };
             \addlegendentry{128x128}
 
@@ -131,25 +132,16 @@ Sequential time as a median from 100 executions: \[ 8.73899 * 10^{-8}s\]
             mark=o,
             ]
             coordinates {
-            (1, 0.000205602)(2, 0.000106047)(3, 7.12769e-05)(4, 5.35315e-05)(5, 4.26937e-05)(6, 3.57209e-05)(7, 3.05576e-05)
+            (1, 0.492763)(2, 0.824244)(3, 1.09068)(4, 1.18312)(5, 1.1795)(6, 1.24978)(7, 1.24385)(8, 1.39286)(9, 1.16681)(10, 1.3264)(11, 1.35838)(12, 0.929522)
             };
             \addlegendentry{1024x1024}
-
-        \addplot[
-            color=cyan,
-            mark=o,
-            ]
-            coordinates {
-            (1, 2.18081e-05)(2, 1.08985e-05)(3, 7.23905e-06)(4, 5.4152e-06)(5, 4.33902e-06)(6, 3.61736e-06)(7, 3.10179e-06)
-            };
-            \addlegendentry{4096x4096}
         \end{axis}
         \end{tikzpicture}
     \caption{Tree add time complexity}
     \label{fig:plot1}
 \end{figure}
 
-We would expect the speedup to increase not decrease. Still these results could make sense considering that parallelizing helps for big workloads, or when the workers are used many times for many moderate sized tasks (so the cost of launching the threads is a fraction of the work they do). But in this case performing comparatively small amount of additions and comparisons is negligible to a CPU. And so are just not doing enough to benefit from parallelizing this specific task.
+Generally we would expect the speedup to keep increasing not decrease. Still these results could make sense considering that parallelizing helps for big workloads, or when the workers are used many times over for many moderate sized tasks (so the cost of launching the threads is a fraction of the work they do). But in this case performing an objectively small amount of additions and comparisons it is negligible to the CPU. And so they are just not doing enough to benefit from parallelizing this specific task.
 
 
 \section*{Problem 2 - Quicksort}
@@ -167,5 +159,122 @@ The quicksort algorithm sorts the list of numbers by first dividing the list int
 \end{minted}
 
 \subsection*{Key points of solution}
+
+Following the standard procedure of developing a quicksort algorithm we just have to introduce the proper opemmp directives in crucial spots in order to make the recursive calls of the algorithm execute on separate threads and as such parallelize the execution. The entire code can be found in the source code directory, here is the main openmp section
+
+\begin{minted}[
+frame=single,
+framesep=2mm,
+baselinestretch=1.2,
+fontsize=\footnotesize,
+]{c}
+    (...)
+    Array quickSort(Array *mainSet)
+    {
+        Array left;
+        Array right;
+        for (k = 0; k < currSize; k++)
+        {
+            if (mainSet->array[k] < pivot)
+            {
+                insertArray(&left, mainSet->array[k]);
+            }
+            else if (mainSet->array[k] > pivot)
+            {
+                insertArray(&right, mainSet->array[k]);
+            }
+            (...)
+        }
+        
+        #pragma omp task shared(left)
+        {
+            left = quickSort(&left);
+        }
+        
+        #pragma omp task shared(right)
+        {
+            right = quickSort(&right);
+        }
+        
+        #pragma omp taskwait
+        (...)
+    }
+    (...)
+\end{minted}
+
+We have to use {\tt omp taskwait} in order to ensure that all previously generated calls were executed before we can continue on joining the left and right parts of the set.
+
+Another important note is that at the first {\tt quicksort()} function call we need to initialize a parallel space as:
+
+\begin{minted}[
+frame=single,
+framesep=2mm,
+baselinestretch=1.2,
+fontsize=\footnotesize,
+]{c}
+    (...)
+    start_time = omp_get_wtime();
+    #pragma omp parallel
+    {
+        #pragma omp single
+        {
+            sorted = quickSort(&toSortSet);
+        }
+    }
+    end_time = omp_get_wtime();
+    (...)
+\end{minted}
+
+We then run the initial call as single so as to let the other threads be ready to begin working on the tasks spawned by the original single thread.
+
+\subsection*{Performance exploration}
+
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}
+        \begin{axis}[
+            title={Speedup by thread variation on different size sets},
+            width=\linewidth,
+            height=200,
+            xlabel={number of threads},
+            ylabel={speedup},
+            ymajorgrids=true,
+            xmajorgrids=true,
+            grid style=dashed,
+        ]
+        
+        \addplot[
+            color=blue,
+            mark=o,
+            ]
+            coordinates {
+            (1, 0.790388)(2, 0.375346)(3, 0.423195)(4, 0.385974)(5, 0.382457)(6, 0.4384)(7, 0.0961835)(8, 0.0755478)(9, 0.377974)(10, 0.349614)(11, 0.346003)(12, 0.309711)
+            };
+            \addlegendentry{100 elements}
+
+        \addplot[
+            color=green,
+            mark=o,
+            ]
+            coordinates {
+            (1, 1.94086)(2, 1.35466)(3, 1.44125)(4, 1.57234)(5, 1.35354)(6, 1.77238)(7, 1.63637)(8, 1.63805)(9, 1.51279)(10, 1.47141)(11, 1.56183)(12, 1.3308)
+            };
+            \addlegendentry{1000 elements}
+
+        \addplot[
+            color=red,
+            mark=o,
+            ]
+            coordinates {
+            (1, 2.3326)(2, 2.83397)(3, 2.94283)(4, 2.56206)(5, 2.74519)(6, 2.7785)(7, 2.16856)(8, 1.83208)(9, 2.03614)(10, 1.66971)(11, 1.31167)(12, 0.564774)
+            };
+            \addlegendentry{10000 elements}
+        \end{axis}
+        \end{tikzpicture}
+    \caption{Tree add time complexity}
+    \label{fig:plot1}
+\end{figure}
+Here it is unclear to us why the openmp single thread execution still has a noticeable speedup, but we could probably assume that this is just a standard offset due to the variation in the generated data. Otherwise the trends seem to follow the notion that there is a threshold at which creating more threads is more computationally intensive then the positive work done by them in total. Not to mention the fact that the computer on which these tests were ran has 6 physical cores and 12 logical processors so the downward trend after 6 threads could also have to do with the hardware implementation.
 
 \end{document}
