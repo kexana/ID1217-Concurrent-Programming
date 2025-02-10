@@ -1,0 +1,13 @@
+Threads, Dictionary, Median Time, Speedup
+1, small_words, .002897, 1.0
+2, small_words, .001665, 1.739939
+4, small_words, .001258, 2.302861
+8, small_words, .001394, 2.078192
+1, medium_words, .010925, 1.0
+2, medium_words, .006936, 1.575115
+4, medium_words, .003974, 2.749119
+8, medium_words, .003585, 3.047419
+1, large_words, .050337, 1.0
+2, large_words, .030807, 1.633946
+4, large_words, .020112, 2.502834
+8, large_words, .013244, 3.800739

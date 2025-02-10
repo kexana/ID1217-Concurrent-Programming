@@ -1,7 +1,11 @@
 \documentclass[a4paper,11pt]{article}
+\usepackage{amsmath}
 
 \usepackage[utf8]{inputenc}
-
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.17}
+\usepackage{graphicx}
+\usepackage{float}
 \usepackage{graphicx}
 \usepackage{caption}
 \usepackage{subcaption}
@@ -16,7 +20,7 @@
 \begin{document}
 
 \title{
-    \textbf{Assignment 1 Report - Critical Sections. Locks, Barriers, and Condition Variables}
+    \textbf{Assignment 2 Report - Programming with OpenMP}
 }
 \author{Dean Tsankov, Kacper Lisik}
 \date{\today}
@@ -277,4 +281,172 @@ We then run the initial call as single so as to let the other threads be ready t
 \end{figure}
 Here it is unclear to us why the openmp single thread execution still has a noticeable speedup, but we could probably assume that this is just a standard offset due to the variation in the generated data. Otherwise the trends seem to follow the notion that there is a threshold at which creating more threads is more computationally intensive then the positive work done by them in total. Not to mention the fact that the computer on which these tests were ran has 6 physical cores and 12 logical processors so the downward trend after 6 threads could also have to do with the hardware implementation.
 
+
+
+\section*{Problem 6 - Find Palindromes and Semordnilaps}
+\begin{minted}[
+frame=single,
+framesep=2mm,
+baselinestretch=1.2,
+fontsize=\footnotesize,
+breaklines,
+]{text}
+There is an online dictionary in /usr/dict/words or /usr/share/dict/words under Linux. The file is used, in particular, by the Linux spell command and contains a few thousand words, e.g., 235886 words. You can download a smaller file called words containing 25143 words.
+Recall that palindromes are words or phrases that read the same forward and backward, such as "noon" or "radar," i.e., if you reverse all the letters, you get the same word or phrase. Reverse pairs or semordnilaps are words whose reverse forms are different valid words, such as "draw" and "ward". Your task is to find all palindromes and all  semordnilaps in the dictionary. For example, "noon" is a palindrome; hence, its reverse is trivially in the dictionary. A word like "draw" is semordnilap and "ward" is also in the dictionary.
+Your parallel program should use W worker processes, where W is a command-line argument. Use the workers just for the compute phase (i.e., to find the palindromic words); do the input and output phases sequentially. Each worker should count the number of words (palindromes and semordnilaps) that it finds. Your program should write the palindromes and semordnilaps to a results file and output the total number of palindromes and semordnilaps in the dictionary and the number of palindromes and semordnilaps found by each worker.
+\end{minted}
+
+
+\subsection*{Key points of solution}
+After sequentially reading the words file, we ensure that the words are sorted in alphabetical order. They appear to be sorted, but to be certain, we use the \texttt{std::sort()} command, which is computationally inexpensive if the words are already sorted or nearly sorted. We distribute the work and create $N$ threads, with each thread checking whether any of $\text{num\_of\_words} / \text{num\_of\_threads}$ words is a palindrome or a semordnilap:
+\newpage
+\begin{minted}[
+frame=single,
+framesep=2mm,
+baselinestretch=1.2,
+fontsize=\footnotesize,
+]{c}
+(...)
+    #pragma omp parallel
+    {
+        int thread_id = omp_get_thread_num();
+        thrd_data[thread_id].start = (words.size()/workers) * thread_id;
+        thrd_data[thread_id].end = (thread_id == workers - 1)? 
+            words.size()-1 : (words.size()/workers) * (thread_id+1);
+        thrd_data[thread_id].tid = thread_id;
+        thread_fun(&thrd_data[thread_id]);
+    }
+(...)
+\end{minted}
+
+Thread function:
+
+\begin{minted}[
+frame=single,
+framesep=2mm,
+baselinestretch=1.2,
+fontsize=\footnotesize,
+]{c}
+(...)
+void* thread_fun (thread_data* data){
+    data->palindromes = 0;
+    data->semordnilaps = 0;
+    for (int i = data->start; i < data->end; i++){
+        //calculate the reverse
+        string reverse = words[i];
+        for (int j = 0; j < reverse.size() / 2; j++)
+            swap(reverse[j], reverse[reverse.size() - 1 - j]); 
+
+        //check if palindrome
+        if(compare_strings(reverse, words[i]) == 0){
+            data->palindromes_vector.pb(reverse);
+            data->palindromes++;
+            continue;
+        }
+
+        //look for semordnilaps - fast
+        int result;
+        if((result = binsearch(i+1,words.size()-1, reverse)) != -1){
+            data->semordnilaps_vector.pb(words[result]);
+            data->semordnilaps_vector.pb(words[i]);
+            data->semordnilaps+=2;
+        } 
+    }
+    return NULL;
+}
+(...)
+\end{minted}
+
+Each thread goes through its assigned list of words, computes the reverse of every word, and checks if the word is a palindrome. Then, using binary search, it looks through the word list to see if the reverse of the given word is also in the word list.
+
+
+
+\subsection*{Parallel Performance Analysis}
+\subsubsection*{Experiment Setup}
+
+To analyze the speedup of the palindrome detection program, we ran the experiment on three different dictionary sizes:
+\begin{itemize}
+    \item \textbf{Small Dictionary} (2,514 words)
+    \item \textbf{Medium Dictionary} (8,381 words)
+    \item \textbf{Large Dictionary} (25,143 words)
+\end{itemize}
+
+For each dictionary size, we ran the program with \textbf{1, 2, 4, and 8 threads}.  
+Each configuration was executed \textbf{50 times}, and the median execution time was used to calculate the speedup:
+
+\[
+\text{Speedup} = \frac{\text{Sequential Time}}{\text{Parallel Time}}
+\]
+
+\subsubsection*{Results and Discussion}
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}
+        \begin{axis}[
+            title={Speedup by thread variation on different dictionary sizes},
+            width=\linewidth,
+            height=200,
+            xlabel={Number of Threads},
+            ylabel={Speedup},
+            ymajorgrids=true,
+            xmajorgrids=true,
+            grid style=dashed,
+            legend pos=north west
+        ]
+        
+        \addplot[
+            color=blue,
+            mark=o,
+            ]
+            coordinates {
+            (1, 1.0) (2, 1.739939) (4, 2.302861) (8, 2.078192)
+            };
+            \addlegendentry{Small Dictionary (3,000 words)}
+
+        \addplot[
+            color=green,
+            mark=o,
+            ]
+            coordinates {
+            (1, 1.0) (2, 1.575115) (4, 2.749119) (8, 3.047419)
+            };
+            \addlegendentry{Medium Dictionary (12,000 words)}
+
+        \addplot[
+            color=red,
+            mark=o,
+            ]
+            coordinates {
+            (1, 1.0) (2, 1.633946) (4, 2.502834) (8, 3.800739)
+            };
+            \addlegendentry{Large Dictionary (25,143 words)}
+        \end{axis}
+    \end{tikzpicture}
+    \caption{Speedup for different dictionary sizes}
+    \label{fig:speedup}
+\end{figure}
+
+\subsubsection*{Analysis of Results}
+
+The speedup increases as we add more threads, but the improvement is not perfectly linear due to \textbf{parallel overhead} and \textbf{synchronization costs}.  
+
+\begin{itemize}
+    \item \textbf{For 2 threads}: Speedup is between 1.5x–1.7x, showing a good improvement.  
+    \item \textbf{For 4 threads}: Speedup increases to 2.3x–2.7x, demonstrating good parallel efficiency.  
+    \item \textbf{For 8 threads}: Speedup \textbf{flattens for the small and medium dictionaries}, meaning adding more threads does not improve performance much. This is likely because:
+    \begin{itemize}
+        \item The extra threads \textbf{spend more time managing work} than actually processing words.
+        \item \textbf{Memory access slows down} when too many threads try to read and write at the same time.
+        \item The workload is \textbf{too small to be efficiently split} among all threads.
+    \end{itemize}
+
+\end{itemize}
+
+\subsubsection*{Conclusion}
+
+\begin{itemize}
+    \item \textbf{Smaller dictionaries} show \textbf{less speedup} because parallel overhead is relatively large compared to the computational cost.  
+    \item \textbf{Larger dictionaries} benefit more from parallelism, but the gains diminish as the number of threads increases.  
+\end{itemize}
 \end{document}
