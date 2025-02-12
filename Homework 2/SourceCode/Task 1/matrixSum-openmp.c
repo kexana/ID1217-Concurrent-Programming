@@ -87,12 +87,14 @@ int main(int argc, char *argv[])
 					total += matrix[i][j];
 					if (matrix[i][j] < min.value)
 					{
+						#pragma omp critical
 						min.value = matrix[i][j];
 						min.xCoordinate = j;
 						min.yCoordinate = i;
 					}
 					else if (matrix[i][j] > max.value)
 					{
+						#pragma omp critical
 						max.value = matrix[i][j];
 						max.xCoordinate = j;
 						max.yCoordinate = i;
