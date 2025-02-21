@@ -8,6 +8,7 @@ public class OrdinaryVehicle extends Vehicle {
     @Override
     public void run() {
         this.StandardFuelUpProcedure(2000);
+        System.out.println(Thread.currentThread().getName() +" Finished");
     }
 
 }

@@ -23,6 +23,7 @@ public class SupplyVehicle extends Vehicle {
                 System.out.println(e.getMessage());
             }
         }
+        System.out.println(Thread.currentThread().getName() +" Finished");
     }
 
 }

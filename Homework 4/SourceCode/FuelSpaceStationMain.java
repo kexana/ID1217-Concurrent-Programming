@@ -4,7 +4,7 @@ public class FuelSpaceStationMain {
 
     public static void main(String[] args) {
 
-        // args[0] number of vehichles
+        // args[0] number of all vehichles
         // args[1] number of suppliers
         // args[2] station nitro capacity
         // args[3] station quant capacity
@@ -16,17 +16,18 @@ public class FuelSpaceStationMain {
         Vehicle[] allVehicles = new Vehicle[numberOfVehicles];
         Random rnd = new Random();
 
+        //how many station access cycles each type of vehicle gets for the simulation
         int supplierLifeSpan = 3;
-        int standardLifeSpan = 5;
+        int standardLifeSpan = 3;
 
-        Station station = new Station(numberOfVehicles, stationMaxNitro, stationMaxQuant);
+        Station station = new Station(numberOfVehicles/2+1, stationMaxNitro, stationMaxQuant, 5000);
 
         for (int i = 0; i < numberOfVehicles; i++) {
             if (i < numberOfSuppliers) {
-                allVehicles[i] = new SupplyVehicle(rnd.nextInt(100), rnd.nextInt(100), station, supplierLifeSpan,
-                        rnd.nextInt(stationMaxNitro / 2), rnd.nextInt(stationMaxQuant / 2));
+                allVehicles[i] = new SupplyVehicle(rnd.nextInt(stationMaxNitro/5), rnd.nextInt(stationMaxQuant/5), station, supplierLifeSpan,
+                        rnd.nextInt(2*(stationMaxNitro / 3)), rnd.nextInt(2*(stationMaxQuant / 3)));
             } else {
-                allVehicles[i] = new OrdinaryVehicle(rnd.nextInt(100), rnd.nextInt(100), station, standardLifeSpan);
+                allVehicles[i] = new OrdinaryVehicle(rnd.nextInt(stationMaxNitro/5), rnd.nextInt(stationMaxQuant/5), station, standardLifeSpan);
             }
             allVehicles[i].start();
         }
@@ -38,5 +39,6 @@ public class FuelSpaceStationMain {
                 System.out.println(e.getMessage());
             }
         }
+        System.out.println("Finished");
     }
 }
