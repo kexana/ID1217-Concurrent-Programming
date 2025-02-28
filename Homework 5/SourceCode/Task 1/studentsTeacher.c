@@ -10,7 +10,8 @@ void teacher(int stNum)
 
     for (i = 0; i < stNum; i++)
     {
-        MPI_Recv(&students[i], 1, MPI_INT, i+1, 0, MPI_COMM_WORLD, &status);
+        //receive message from any source since we do not know which student will request first
+        MPI_Recv(&students[i], 1, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
         printf("Received request from %d\n", students[i]);
         unpaired++;
         printf("Curently unpaired %d\n", unpaired);
@@ -25,6 +26,11 @@ void teacher(int stNum)
     if(unpaired == 1){
         MPI_Send(&students[stNum-1], 1, MPI_INT, students[stNum - 1], 0, MPI_COMM_WORLD);
     }
+
+    for (i = 0; i < stNum;i++){
+        int done = 1;
+        MPI_Send(&done, 1, MPI_INT, students[i], 0, MPI_COMM_WORLD);
+    }
 }
 
 void student(int id)
@@ -32,13 +38,19 @@ void student(int id)
     int pairStId;
     MPI_Status status;
 
-    printf("Created student %d\n", id);
-
+    //ask teacher process rank 0 for a pairing
     MPI_Send(&id, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
 
+    //receive pairing from teacher
     MPI_Recv(&pairStId, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
 
-    printf("The student %d was paired with the student %d\n", id, pairStId);
+    //wait for teacher to pair evryone before printing
+    int teacherDone = 0;
+    MPI_Recv(&teacherDone, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &status);
+
+    if(teacherDone){
+        printf("The student %d was paired with the student %d\n", id, pairStId);
+    }
 }
 
 int main(argc, argv)
@@ -50,7 +62,9 @@ char **argv;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     
+    //the 0 rank process will be the teacher, anything else is a student
     if(!rank){
+        //exclude teacher from the student pool
         teacher(size-1);
     }else{
         student(rank);
