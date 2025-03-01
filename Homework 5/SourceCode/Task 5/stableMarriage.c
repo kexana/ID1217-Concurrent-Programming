@@ -3,7 +3,8 @@
 #include <stdlib.h>
 #include <time.h>
 
-int womanAccepts = 0;
+int totalWomanAccepts = 0;
+MPI_Comm women_comm;
 
 void genRanks(int array[], int length, int min, int max, int k)
 {
@@ -48,31 +49,30 @@ void man(int rank, int numWom)
         printf("man id %d has ranked woman %d as %d\n", rank, ranks[i], i);
     }
     MPI_Barrier(MPI_COMM_WORLD);
-    int notAccepted = 1;
-    int myWifesIndex;
+
+    int accepted = 0;
 
     for (i = 0; i < numWom; i++)
     {
         MPI_Send(&rank, 1, MPI_INT, ranks[i] + numWom, 0, MPI_COMM_WORLD);
-        MPI_Recv(&notAccepted, 1, MPI_INT, ranks[i] + numWom, 0, MPI_COMM_WORLD, &status);
-        if (!notAccepted)
+        MPI_Recv(&accepted, 1, MPI_INT, ranks[i] + numWom, 0, MPI_COMM_WORLD, &status);
+        if (accepted)
         {
             printf("->man id %d was accepted by woman %d\n", rank, ranks[i]);
-            myWifesIndex = i;
         }
         else
         {
             continue;
         }
         int stillMyWife;
-        printf("->man id %d waits for woman %d to confirm\n", rank, ranks[myWifesIndex]);
-        MPI_Recv(&stillMyWife, 1, MPI_INT, ranks[myWifesIndex] + numWom, 0, MPI_COMM_WORLD, &status);
+        printf("->man id %d waits for woman %d to confirm\n", rank, ranks[i]);
+        MPI_Recv(&stillMyWife, 1, MPI_INT, ranks[i] + numWom, 0, MPI_COMM_WORLD, &status);
         if (stillMyWife)
         {
-            printf("man id %d maried to woman %d\n", rank, ranks[myWifesIndex]);
+            printf("man id %d maried to woman %d\n", rank, ranks[i]);
             break;
         }
-        printf("->man id %d was rejected by woman %d afterall\n", rank, ranks[myWifesIndex]);
+        printf("->man id %d was rejected by woman %d afterall\n", rank, ranks[i]);
     }
 }
 
@@ -80,6 +80,7 @@ void woman(int rank, int numMen)
 {
     int ranks[numMen];
     int i = 0;
+    int womanAccepts = 0;
     MPI_Status status;
 
     // lower index means higher rank ie more wanted
@@ -89,8 +90,10 @@ void woman(int rank, int numMen)
         printf("woman id %d has ranked man %d as %d\n", rank, ranks[i], i);
     }
     MPI_Barrier(MPI_COMM_WORLD);
+
     int receiveMan;
     int currentManIndex;
+
     MPI_Recv(&receiveMan, 1, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
     printf("woman %d received man %d\n", rank, receiveMan);
     for (i = 0; i < numMen; i++)
@@ -101,21 +104,28 @@ void woman(int rank, int numMen)
             break;
         }
     }
-    int accept = 0;
-    int reject = 1;
+    int accept = 1;
+    int reject = 0;
+    int imAlreadyMarried = 0;//boolean flag
+
+    womanAccepts++;
     MPI_Send(&accept, 1, MPI_INT, receiveMan, 0, MPI_COMM_WORLD);
     // first wish man
     if (currentManIndex == 0)
     {
         MPI_Send(&accept, 1, MPI_INT, ranks[currentManIndex], 0, MPI_COMM_WORLD);
-        printf("woman id %d maried to man %d\n", rank, ranks[currentManIndex]);
         womanAccepts++;
-        MPI_Bcast(&womanAccepts, 1, MPI_INT, rank, MPI_COMM_WORLD);
-        return;
+        printf("woman id %d maried to man %d\n", rank, ranks[currentManIndex]);
+        printf("woman accepts are %d \n", womanAccepts);
+        imAlreadyMarried = 1;
     }
     int nopTimeout = numMen - 2;
     MPI_Request req;
-    while ((womanAccepts < numMen-1) || nopTimeout > 0)
+    //MPI_Allreduce(&womanAccepts, &totalWomanAccepts, 1, MPI_INT, MPI_SUM, women_comm);
+    if(rank == 0){
+        printf("tottal accepts %d\n", totalWomanAccepts);
+    }
+    while ((totalWomanAccepts < 2*numMen-2) || nopTimeout > 0)
     {
         // key part here
         // MPI_Irecv(&receiveMan, 1, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &req);
@@ -126,31 +136,47 @@ void woman(int rank, int numMen)
 
         if (flag)
         {
+            printf("woman %d received additionally from man %d\n", rank, receiveMan);
             MPI_Recv(&receiveMan, 1, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
-            for (i = 0; i < numMen; i++)
-            {
-                if (ranks[i] == receiveMan)
+            if(!imAlreadyMarried){
+                for (i = 0; i < numMen; i++)
                 {
-                    if (i < currentManIndex)
+                    if (ranks[i] == receiveMan)
                     {
-                        MPI_Send(&accept, 1, MPI_INT, ranks[i], 0, MPI_COMM_WORLD);
-                        MPI_Send(&reject, 1, MPI_INT, ranks[currentManIndex], 0, MPI_COMM_WORLD);
-                        currentManIndex = i;
-                    }
-                    else
-                    {
-                        printf("kolko puti rejectvash\n");
-                        MPI_Send(&reject, 1, MPI_INT, ranks[i], 0, MPI_COMM_WORLD);
-                        nopTimeout--;
+                        if (i < currentManIndex)
+                        {
+                            MPI_Send(&accept, 1, MPI_INT, ranks[i], 0, MPI_COMM_WORLD);
+                            MPI_Send(&reject, 1, MPI_INT, ranks[currentManIndex], 0, MPI_COMM_WORLD);
+                            womanAccepts++;
+                            printf("woman accepts are %d \n", womanAccepts);
+                            currentManIndex = i;
+                        }
+                        else
+                        {
+                            printf("kolko puti rejectvash\n");
+                            MPI_Send(&reject, 1, MPI_INT, ranks[i], 0, MPI_COMM_WORLD);
+                            nopTimeout--;
+                        }
+                        break;
                     }
                 }
+            }else{
+                MPI_Send(&reject, 1, MPI_INT, receiveMan, 0, MPI_COMM_WORLD);
             }
+        }else if(!imAlreadyMarried){
+            MPI_Send(&accept, 1, MPI_INT, ranks[currentManIndex], 0, MPI_COMM_WORLD);
+            printf("woman id %d maried to man %d\n", rank, ranks[currentManIndex]);
+            womanAccepts++;
+            printf("woman accepts are %d \n", womanAccepts);
+            imAlreadyMarried = 1;
         }
+        //MPI_Allreduce(&womanAccepts, &totalWomanAccepts, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+        printf("visi li");
     }
-    womanAccepts++;
-    MPI_Bcast(&womanAccepts, 1, MPI_INT, rank, MPI_COMM_WORLD);
-    MPI_Send(&accept, 1, MPI_INT, ranks[currentManIndex], 0, MPI_COMM_WORLD);
-    printf("woman id %d maried to man %d\n", rank, ranks[currentManIndex]);
+    if(!imAlreadyMarried){
+        MPI_Send(&accept, 1, MPI_INT, ranks[currentManIndex], 0, MPI_COMM_WORLD);
+        printf("woman id %d maried to man %d\n", rank, ranks[currentManIndex]);
+    }
 }
 
 int main(argc, argv)
@@ -163,6 +189,9 @@ char **argv;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     int menWemNum = size / 2;
+    
+    int color = (rank >= menWemNum) ? 1 : MPI_UNDEFINED;
+    MPI_Comm_split(MPI_COMM_WORLD, color, rank, &women_comm);
 
     if (rank < menWemNum)
     {
@@ -170,9 +199,12 @@ char **argv;
     }
     else
     {
+
         woman(rank - menWemNum, menWemNum);
     }
 
+
+    MPI_Comm_free(&women_comm);
     MPI_Finalize();
     return 0;
 }
