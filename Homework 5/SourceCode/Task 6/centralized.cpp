@@ -1,11 +1,13 @@
 #include <bits/stdc++.h>
 #include <mpi.h>
+#define DEBUG 0
 
 using namespace std;
 
 mutex cout_mutex;
 void print_message(int my_id, int largest, int smallest)
 {
+    if(!DEBUG) return;
     lock_guard<mutex> lock(cout_mutex);
     cout << "Thread: " << my_id << " smallest val: " << smallest << " largest val: " << largest << "\n";
 }

@@ -1,11 +1,13 @@
 #include <bits/stdc++.h>
 #include <mpi.h>
+#define DEBUG 0
 
 using namespace std;
 
 mutex cout_mutex;
 void print_message(int my_id, int largest, int smallest)
 {
+    if(!DEBUG) return;
     lock_guard<mutex> lock(cout_mutex);
     cout << "Thread: " << my_id << " smallest val: " << smallest << " largest val: " << largest << "\n";
 }
@@ -21,6 +23,7 @@ int main(int argc, char *argv[])
     srand(my_id);
     int v = rand();
     int smallest = v, largest = v;
+    MPI_Barrier(MPI_COMM_WORLD);
     for (int i = 0; i < num_of_processes; i++)
     {
         if (i == my_id)
