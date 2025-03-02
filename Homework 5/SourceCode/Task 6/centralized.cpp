@@ -22,6 +22,7 @@ int main(int argc, char *argv[])
     int v = rand();
     int smallest = v, largest = v;
     int results[num_of_processes];
+    MPI_Barrier(MPI_COMM_WORLD);
     if (my_id == 0)
     {
         for (int i = 1; i < num_of_processes; ++i)
@@ -46,4 +47,6 @@ int main(int argc, char *argv[])
         MPI_Recv(&largest, 1, MPI_INT, 0, 2, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         print_message(my_id,largest,smallest);
     }
+    MPI_Finalize();
+
 }

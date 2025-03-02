@@ -40,4 +40,6 @@ int main(int argc, char *argv[])
     }
 
     print_message(my_id, largest, smallest);
+    MPI_Finalize();
+
 }
