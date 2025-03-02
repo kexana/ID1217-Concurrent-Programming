@@ -16,6 +16,7 @@ int main(int argc, char *argv[])
 {
     // Initialize MPI
     MPI_Init(&argc, &argv);
+    auto start = chrono::high_resolution_clock::now();
 
     int num_of_processes, my_id;
     MPI_Comm_size(MPI_COMM_WORLD, &num_of_processes); // Get the number of processes
@@ -28,8 +29,7 @@ int main(int argc, char *argv[])
     {
         if (i == my_id)
             continue;
-        MPI_Send(&smallest, 1, MPI_INT, i, 1, MPI_COMM_WORLD);
-        MPI_Send(&largest, 1, MPI_INT, i, 1, MPI_COMM_WORLD);
+        MPI_Send(&v, 1, MPI_INT, i, 1, MPI_COMM_WORLD);
     }
 
     for (int i = 0; i < num_of_processes; ++i)
@@ -43,6 +43,12 @@ int main(int argc, char *argv[])
     }
 
     print_message(my_id, largest, smallest);
+    
     MPI_Finalize();
+     auto end = chrono::high_resolution_clock::now();
 
+    // Calculate the elapsed time in seconds.
+    chrono::duration<double> elapsed = end - start;
+    cout << "Execution time: " << elapsed.count() << " seconds." << endl;
+    
 }
